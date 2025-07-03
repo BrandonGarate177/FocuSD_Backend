@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "caramel-duality-455219-e3",
+  "private_key_id": "f808cf188ed1b6e9999b1d5e8f9575413485efb1",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCU/MUMDgHpD+Td\nzKl6IWppwCuXQ/tNv86v4x2w2g+LpUkarEmuvXFd2Xq9jeXU7frwFoLcc4CKtFl0\nZVlhga/vTDB4wZiNCQsIrfmCiwRoemXyDuqiKchf+NPk+wRyuVHyaXZoA12cfuSc\nkBp/e8VvqW2ceeANHB6OZEwp+Tm/IWikSE9cf/q7Yg8TBSd0IeO0OO2FGqnk1k2w\nEZe8xqwM+ZfZLCQpp/UOggZxILZtVHKNg/dgyou2Jn308ZwXAIHJgdDHp1prD+ia\nHk7zggZ+gTBEOT24fKDiNMcY2QnbTNSEdHb38QI2n6h15gHYcHWFJKRlnak3l+KL\nMtUD9YRzAgMBAAECggEADYxEwNlfPBnJZo/vU19JhW9Hp3wzlHjeKylccFIL+tdf\nY/EJzD2G2xFlM2p9XVT8ritl3/US2coXnll+/LplzL1hZQG5xQ1u9u2XFFNe5b9H\nmPDZTkC9a1i9sANRfrsyY/hKH6A6uXnigQgrmK8hH4vJH2MHyDln3+vn7yMuKJ6W\nFnq5OWJYrJZpiP0UmhyEbwbcs9Rck2XP6s6uVVKumsKy8b2EA6Jd1gIdLla77yOh\nrh2tdtOQH9K5s4VjxHWAgccdjMVb5j/5Psrs2JDxwCubPZx3SsQlbJiXAXwT7WIa\n0kipic0OXyNopbYPO7zjafR+9ARxMcbhVoEMUejoUQKBgQDHF4RZVTaFQ1YLSWFR\nzQtcLp311+FMpXdMXycF+XpqRKJ5IviMw+ND3j9J2LZZwyiaPfzas5xMDV/dcnuT\nq/wgnmqACjzsrtrqQAGH5AOxSHNHpawLx084b3ydE+UUoENXC0MfAOPvsI0ys6fZ\nI1yeMm6V+rc9VUunSchJ4csdYwKBgQC/kt+YSuBMbT1YX545j8HnJDXAeBr/e8tf\nBVRzkG/Dg5i/tzv0/lr6J91k1kbTOv8oBwtqPAggdMiJmmfNRfSYLwmvHthj6jgQ\nrtvHO5N0Mw2ynQ+Hlm8lGmvj6TMLI+HPlvveyTZYpF2vrjzUaeXveLBN16u2TALF\nTTZx1XTxsQKBgFnAGEHNUE6zFE7yPZUKwlxEB6GUOFS9IxKisozW8oCFgFjrkvCi\nPgmSXyWDNHEysVMXLq3I2mTOgrDpsxvXJEnwIEKoWt631KhVQltoRuHcr1tVLEID\nD4t5dsu49ERgGvtacF/Bnv+mr4BzzO7uKgqG4aNq6sATe49mi4wC5fXRAoGAT0LK\nRe08zgIobmbpRPGIjUR7BM3shaXHZ+IBpeqtgxvwV+nM4blXFMbnn6/UD9MJ/Jql\ni2eZCSyoR95dch2ubESR4iWF7Bjc53IhNlYc1OfGlA7NfRCtnZFH8DzsxIAtDkFu\npidj19rxdB1Hx66k1qZ9c0d3IO5j+xPOIdzqDJECgYA0fFryQysOqPlo0va/2r5D\nohJaZgbr1JPEPwbZz3l4Gke6UnAeGFMFHK0Lf0F8R2pIVYvCDguWFdQ0EKsVzfsD\nOZL6vU4nZp0bLgG8wRr95WcnNsj0OUM8wOror4CORgmt5h3vPWqpghtSiKSpZ+Ee\nX302i6jiCjtJ18UMUN8EVQ==\n-----END PRIVATE KEY-----\n",
+  "client_email": "gemini-access@caramel-duality-455219-e3.iam.gserviceaccount.com",
+  "client_id": "111251435330943607537",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/gemini-access%40caramel-duality-455219-e3.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
