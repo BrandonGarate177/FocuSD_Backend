@@ -17,6 +17,7 @@ func main() {
 
 	// ONE endpoint that handles file uploads
 	r.POST("/upload", handlers.UploadHandler())
+	r.POST("/analyze", handlers.AnalyzeHandler())
 
 	// Starts on port 8080
 	if err := r.Run(":8080"); err != nil {
