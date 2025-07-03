@@ -10,7 +10,9 @@ import (
 
 // Main Func always fire to see
 func main() {
-	_ = godotenv.Load() // Fancy syntax to load .env file
+	// Load environment variables from project root .env and Backend/.env
+	_ = godotenv.Load()
+	_ = godotenv.Load("Backend/.env")
 
 	// Gin router
 	r := gin.Default()

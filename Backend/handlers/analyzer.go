@@ -2,20 +2,25 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
+
+	"github.com/gin-gonic/gin"
+	"golang.org/x/oauth2/google"
 )
 
 type Session struct {
 	ID        string `json:"id"`
 	StartTime int64  `json:"startTime"`
 	Config    struct {
-		Duration      int      `json:"duration"` // minutes
+		Duration      int      `json:"duration"`
 		BreakInterval int      `json:"breakInterval"`
 		Cycles        int      `json:"cycles"`
 		Goal          string   `json:"goal"`
@@ -29,20 +34,18 @@ type Session struct {
 	EndTime int64 `json:"endTime"`
 }
 
-// TimeBucket is one point in the sparkline/heatmap
 type TimeBucket struct {
-	Start    int64   `json:"start"`    // bucket start timestamp
-	Duration int64   `json:"duration"` // bucket width (ms)
-	Ratio    float64 `json:"ratio"`    // attentive ratio
+	Start    int64   `json:"start"`
+	Duration int64   `json:"duration"`
+	Ratio    float64 `json:"ratio"`
 }
 
-// Analysis holds computed metrics for a session
 type Analysis struct {
-	TotalDuration          int64        `json:"totalDuration"`     // ms
-	AttentiveDuration      int64        `json:"attentiveDuration"` // ms
-	AttentionRatio         float64      `json:"attentionRatio"`    // 0-1
+	TotalDuration          int64        `json:"totalDuration"`
+	AttentiveDuration      int64        `json:"attentiveDuration"`
+	AttentionRatio         float64      `json:"attentionRatio"`
 	DistractionCount       int          `json:"distractionCount"`
-	AvgDistractionDuration float64      `json:"avgDistractionDuration"` // ms
+	AvgDistractionDuration float64      `json:"avgDistractionDuration"`
 	TimeSeries             []TimeBucket `json:"timeSeries"`
 	StartCycleSlump        bool         `json:"startCycleSlump"`
 	EndCycleFatigue        bool         `json:"endCycleFatigue"`
@@ -56,16 +59,14 @@ func AnalyzeHandler() gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON payload"})
 			return
 		}
-		// compute durations
+
 		total := sess.EndTime - sess.StartTime
-		var attentive int64
+		var attentive, discTotal int64
 		var discCount int
-		var discTotal int64
-		// compute durations by iterating logs
 		var inDisc bool
 		var discStart int64
+
 		for i, log := range sess.Logs {
-			// determine next timestamp
 			nextTs := sess.EndTime
 			if i+1 < len(sess.Logs) {
 				nextTs = sess.Logs[i+1].Timestamp
@@ -74,7 +75,6 @@ func AnalyzeHandler() gin.HandlerFunc {
 			if log.Status == "attentive" {
 				attentive += delta
 				if inDisc {
-					// end of distraction
 					discTotal += log.Timestamp - discStart
 					discCount++
 					inDisc = false
@@ -86,11 +86,11 @@ func AnalyzeHandler() gin.HandlerFunc {
 				}
 			}
 		}
-		// finalize last distraction if still open
 		if inDisc {
 			discTotal += sess.EndTime - discStart
 			discCount++
 		}
+
 		avgDisc := 0.0
 		if discCount > 0 {
 			avgDisc = float64(discTotal) / float64(discCount)
@@ -99,10 +99,11 @@ func AnalyzeHandler() gin.HandlerFunc {
 		if total > 0 {
 			ratio = float64(attentive) / float64(total)
 		}
-		// bucket per minute
+
 		bucketMs := int64(60 * 1000)
 		buckets := int(math.Ceil(float64(total) / float64(bucketMs)))
 		ts := make([]TimeBucket, buckets)
+
 		for i := 0; i < buckets; i++ {
 			start := sess.StartTime + int64(i)*bucketMs
 			end := start + bucketMs
@@ -127,7 +128,7 @@ func AnalyzeHandler() gin.HandlerFunc {
 			}
 			ts[i] = TimeBucket{Start: start, Duration: bucketMs, Ratio: r}
 		}
-		// detect slump/fatigue (first and last bucket ratio <80% of overall)
+
 		slump := false
 		fatigue := false
 		if len(ts) > 0 {
@@ -138,7 +139,7 @@ func AnalyzeHandler() gin.HandlerFunc {
 				fatigue = true
 			}
 		}
-		// assemble metrics
+
 		analysis := Analysis{
 			TotalDuration:          total,
 			AttentiveDuration:      attentive,
@@ -148,34 +149,50 @@ func AnalyzeHandler() gin.HandlerFunc {
 			TimeSeries:             ts,
 			StartCycleSlump:        slump,
 			EndCycleFatigue:        fatigue,
-			Summary:                "",
 		}
-		// generate LLM-driven summary if key present
-		if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
-			analysis.Summary = generateSummary(analysis)
+
+		// choose summary source: service account or API key
+		log.Printf("Env GAC: %s", os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+		log.Printf("Env GEMINI_API_KEY: %s", os.Getenv("GEMINI_API_KEY"))
+		if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") != "" {
+			log.Println("Using service account authentication branch")
+			if s := generateSummaryWithServiceAccount(analysis); s != "" {
+				analysis.Summary = s
+			} else {
+				analysis.Summary = defaultSummary(ratio, discCount, avgDisc)
+			}
+		} else if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
+			log.Println("Using API key authentication branch")
+			if s := generateSummaryWithAPIKey(analysis, apiKey); s != "" {
+				analysis.Summary = s
+			} else {
+				analysis.Summary = defaultSummary(ratio, discCount, avgDisc)
+			}
 		} else {
-			analysis.Summary = fmt.Sprintf(
-				"Overall attention %.1f%%, %d distractions (avg %.1f s)",
-				ratio*100, discCount, avgDisc/1000.0,
-			)
+			log.Println("No authentication env detected; using default summary")
+			analysis.Summary = defaultSummary(ratio, discCount, avgDisc)
 		}
+
 		c.JSON(http.StatusOK, analysis)
 	}
 }
 
-func generateSummary(a Analysis) string {
-	apiKey := os.Getenv("GEMINI_API_KEY")
+func defaultSummary(ratio float64, discCount int, avgDisc float64) string {
+	return fmt.Sprintf("Overall attention %.1f%%, %d distractions (avg %.1f s)", ratio*100, discCount, avgDisc/1000.0)
+}
 
-	prompt := fmt.Sprintf(
-		"Given the following study session metrics:\n"+
-			"- Total duration: %.1f minutes\n"+
-			"- Attentive duration: %.1f minutes\n"+
-			"- Attention ratio: %.1f%%\n"+
-			"- Distraction count: %d\n"+
-			"- Average distraction duration: %.1f seconds\n"+
-			"- Start cycle slump: %t\n"+
-			"- End cycle fatigue: %t\n"+
-			"Summarize the type of session the user had in 2-3 sentences. Clearly state if the user was focused, distracted, or fatigued, and mention any notable patterns. Refer to the user with 'you' and use a friendly, encouraging tone.\n\n",
+// generateSummaryWithAPIKey sends request using an API key
+func generateSummaryWithAPIKey(a Analysis, apiKey string) string {
+	prompt := fmt.Sprintf(`Here are your study session metrics:
+- Total duration: %.1f minutes
+- Attentive duration: %.1f minutes
+- Attention ratio: %.1f%%
+- Distraction count: %d
+- Average distraction duration: %.1f seconds
+- Start cycle slump: %t
+- End cycle fatigue: %t
+
+Please write a friendly, supportive, and encouraging summary of this session in 2-3 sentences. Use positive language, highlight any achievements or improvements, and offer gentle motivation for next time. Refer to the user as 'you' and keep the tone uplifting.`,
 		float64(a.TotalDuration)/60000.0,
 		float64(a.AttentiveDuration)/60000.0,
 		a.AttentionRatio*100,
@@ -185,40 +202,37 @@ func generateSummary(a Analysis) string {
 		a.EndCycleFatigue,
 	)
 
-	reqBody := map[string]interface{}{
+	payload := map[string]interface{}{
 		"contents": []map[string]interface{}{
-			{
-				"role": "user",
-				"parts": []map[string]string{
-					{"text": prompt},
-				},
-			},
-		},
-		"safetySettings": []map[string]interface{}{
-			{"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": 4},
-		},
-		"generationConfig": map[string]interface{}{
-			"temperature":     0.7,
-			"maxOutputTokens": 150,
+			{"parts": []map[string]string{
+				{"text": prompt},
+			}},
 		},
 	}
-
-	jsonData, _ := json.Marshal(reqBody)
-	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	body, err := json.Marshal(payload)
 	if err != nil {
-		return "error creating request"
+		return ""
 	}
-
+	req, err := http.NewRequest("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key="+apiKey, bytes.NewBuffer(body))
+	if err != nil {
+		return ""
+	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
-		return "error sending request"
+		log.Printf("APIKey request error: %v", err)
+		return ""
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("APIKey non-OK HTTP %d: %s", resp.StatusCode, string(body))
+		return ""
+	}
 
-	var res struct {
+	var result struct {
 		Candidates []struct {
 			Content struct {
 				Parts []struct {
@@ -227,10 +241,93 @@ func generateSummary(a Analysis) string {
 			} `json:"content"`
 		} `json:"candidates"`
 	}
-
-	_ = json.Unmarshal(body, &res)
-	if len(res.Candidates) > 0 && len(res.Candidates[0].Content.Parts) > 0 {
-		return res.Candidates[0].Content.Parts[0].Text
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
+		return ""
 	}
-	return "no response"
+	return result.Candidates[0].Content.Parts[0].Text
+}
+
+// generateSummaryWithServiceAccount uses service account credentials for auth
+func generateSummaryWithServiceAccount(a Analysis) string {
+	ctx := context.Background()
+	credPath := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	log.Printf("GAC path from env: %s", credPath)
+	var absPath string
+	if filepath.IsAbs(credPath) {
+		absPath = credPath
+	} else {
+		wd, _ := os.Getwd()
+		absPath = filepath.Join(wd, credPath)
+	}
+	log.Printf("Resolved GAC absolute path: %s", absPath)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		log.Printf("failed reading creds file: %v", err)
+		return ""
+	}
+	conf, err := google.JWTConfigFromJSON(data, "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil {
+		log.Printf("invalid creds JSON: %v", err)
+		return ""
+	}
+	client := conf.Client(ctx)
+	// build prompt same as APIKey version
+	prompt := fmt.Sprintf(`Here are your study session metrics:
+- Total duration: %.1f minutes
+- Attentive duration: %.1f minutes
+- Attention ratio: %.1f%%
+- Distraction count: %d
+- Average distraction duration: %.1f seconds
+- Start cycle slump: %t
+- End cycle fatigue: %t
+
+Please write a friendly, supportive, and encouraging summary of this session in 2-3 sentences. Use positive language, highlight any achievements or improvements, and offer gentle motivation for next time. Refer to the user as 'you' and keep the tone uplifting.`,
+		float64(a.TotalDuration)/60000.0,
+		float64(a.AttentiveDuration)/60000.0,
+		a.AttentionRatio*100,
+		a.DistractionCount,
+		a.AvgDistractionDuration/1000.0,
+		a.StartCycleSlump,
+		a.EndCycleFatigue,
+	)
+	payload := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{"parts": []map[string]string{
+				{"text": prompt},
+			}},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	req, err := http.NewRequest("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent", bytes.NewBuffer(body))
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("ServiceAccount request error: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("ServiceAccount non-OK HTTP %d: %s", resp.StatusCode, string(body))
+		return ""
+	}
+	var result struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
+		return ""
+	}
+	return result.Candidates[0].Content.Parts[0].Text
 }
